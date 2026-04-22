@@ -1,157 +1,115 @@
 import SwiftUI
-import WebKit
 
 struct ContentView: View {
     @StateObject private var viewModel = WebViewModel()
-
     let uvaBlue = Color(red: 0/255, green: 75/255, blue: 120/255)
 
     var body: some View {
         VStack(spacing: 0) {
-            if viewModel.showBackButton && !viewModel.isLoading {
-                NavBar(viewModel: viewModel)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-                    .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.showBackButton)
+            // NavBar Customizada
+            if (viewModel.showBackButton || viewModel.showReloadButton) && !viewModel.isLoading {
+                HStack {
+                    if viewModel.showBackButton {
+                        Button(action: { viewModel.goBack() }) {
+                            HStack(spacing: 5) {
+                                Image(systemName: "chevron.left")
+                                Text("Voltar")
+                            }
+                            .font(.system(size: 17, weight: .semibold))
+                        }
+                        .padding(.leading)
+                    }
+                    
+                    Spacer()
+                    
+                    if viewModel.showReloadButton {
+                        Button(action: { viewModel.reload() }) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 18, weight: .bold))
+                        }
+                        .padding(.trailing)
+                    }
+                }
+                .frame(height: 50)
+                .background(uvaBlue)
+                .foregroundColor(.white)
             }
 
             ZStack {
                 uvaBlue.ignoresSafeArea()
-
-                WebView(viewModel: viewModel)
+                
+                WebViewRepresentable(webView: viewModel.webView)
                     .opacity(viewModel.showError ? 0 : 1)
-                    .ignoresSafeArea(edges: .bottom)
-
-                if viewModel.showError {
-                    ErrorView(isNoInternet: viewModel.isNoInternetError) {
-                        viewModel.reload()
+                
+                if viewModel.isLoading && !viewModel.showError {
+                    VStack {
+                        ProgressView().tint(.yellow).scaleEffect(1.5)
+                        Text("Carregando...").padding().foregroundColor(.white)
                     }
                 }
-
-                if viewModel.isLoading && !viewModel.showError {
-                    ZStack {
-                        uvaBlue.ignoresSafeArea()
-                        VStack(spacing: 20) {
-                            ProgressView()
-                                .tint(.yellow)
-                                .scaleEffect(2.0)
-                            Text("Carregando...")
-                                .foregroundColor(.white)
-                                .font(.headline)
-                        }
+                
+                if viewModel.showError {
+                    VStack(spacing: 20) {
+                        Image(systemName: "wifi.slash").font(.largeTitle)
+                        Text("Sem conexão com a internet")
+                        Button("Tentar novamente") { viewModel.reload() }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.yellow)
+                            .foregroundColor(uvaBlue)
                     }
+                    .foregroundColor(.white)
                 }
             }
         }
-        .ignoresSafeArea(edges: .bottom)
         .preferredColorScheme(.dark)
         .alert("Salvar senha?", isPresented: $viewModel.showSavePasswordPrompt) {
             Button("Salvar com Face ID") { viewModel.savePassword() }
             Button("Agora não", role: .cancel) { viewModel.discardSavePassword() }
         } message: {
-            Text("Salve sua senha de forma segura para entrar automaticamente com Face ID ou Touch ID.")
+            Text("Deseja usar a biometria para entrar automaticamente na próxima vez?")
         }
         .sheet(isPresented: $viewModel.showSettingsSheet) {
-            SettingsSheet(viewModel: viewModel)
+            SettingsView(viewModel: viewModel)
         }
     }
 }
 
-// MARK: - Barra de navegação
-
-struct NavBar: View {
-    @ObservedObject var viewModel: WebViewModel
-    let uvaBlue = Color(red: 0/255, green: 75/255, blue: 120/255)
-
-    var body: some View {
-        HStack {
-            Button(action: { viewModel.goBack() }) {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.white)
-                    .frame(width: 44, height: 44)
-            }
-            .accessibilityLabel("Voltar")
-            Spacer()
-        }
-        .frame(height: 44)
-        .background(uvaBlue)
-    }
+// Representable simples para o WebView
+struct WebViewRepresentable: UIViewRepresentable {
+    let webView: WKWebView
+    func makeUIView(context: Context) -> WKWebView { webView }
+    func updateUIView(_ uiView: WKWebView, context: Context) {}
 }
 
-// MARK: - Sheet de Configurações
-
-struct SettingsSheet: View {
+struct SettingsView: View {
     @ObservedObject var viewModel: WebViewModel
-    @Environment(\.dismiss) private var dismiss
-    @State private var showDeleteConfirm = false
+    @Environment(\.dismiss) var dismiss
+    @State private var showingDeleteAlert = false
 
     var body: some View {
         NavigationView {
             List {
-                Section {
+                Section("Segurança") {
                     if viewModel.hasCredentials {
-                        HStack {
-                            Image(systemName: "faceid")
-                                .foregroundColor(.green)
-                                .font(.title2)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Senha salva")
-                                    .font(.headline)
-                                Text("Entrada automática com biometria ativa")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
-
-                        Button(role: .destructive) {
-                            showDeleteConfirm = true
-                        } label: {
+                        Button(role: .destructive) { showingDeleteAlert = true } label: {
                             Label("Esquecer senha salva", systemImage: "trash")
                         }
                     } else {
-                        HStack {
-                            Image(systemName: "faceid")
-                                .foregroundColor(.secondary)
-                                .font(.title2)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Nenhuma senha salva")
-                                    .font(.headline)
-                                Text("Faça login e salve sua senha com Face ID")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .padding(.vertical, 4)
+                        Text("Nenhuma senha salva no dispositivo.")
+                            .foregroundColor(.secondary)
                     }
-                } header: {
-                    Text("Acesso rápido")
-                }
-
-                Section {
-                    Text("Suas credenciais são armazenadas exclusivamente neste dispositivo, protegidas pelo Secure Enclave do iOS. Nunca são enviadas para servidores externos.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                } header: {
-                    Text("Segurança")
                 }
             }
             .navigationTitle("Configurações")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Fechar") { dismiss() }
+                Button("Fechar") { dismiss() }
+            }
+            .confirmationDialog("Excluir senha?", isPresented: $showingDeleteAlert) {
+                Button("Excluir", role: .destructive) {
+                    viewModel.deleteCredentials()
+                    dismiss()
                 }
             }
-        }
-        .confirmationDialog("Esquecer senha salva?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
-            Button("Esquecer senha", role: .destructive) {
-                viewModel.deleteCredentials()
-                dismiss()
-            }
-            Button("Cancelar", role: .cancel) {}
-        } message: {
-            Text("Você precisará digitar sua senha manualmente no próximo acesso.")
         }
     }
 }

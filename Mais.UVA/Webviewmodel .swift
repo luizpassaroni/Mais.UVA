@@ -4,7 +4,6 @@ import Combine
 import LocalAuthentication
 import UIKit
 
-// URLs onde o botão de voltar NÃO deve aparecer
 private let hiddenBackURLs: [String] = [
     "portalaluno.uva.br/LoginMobile",
     "portalaluno.uva.br/Aluno/PortalAluno"
@@ -18,20 +17,17 @@ class WebViewModel: NSObject, ObservableObject {
     @Published var pageTitle: String = ""
     @Published var canGoBack: Bool = false
     @Published var showBackButton: Bool = false
+    @Published var showReloadButton: Bool = false // Novo estado para o botão de reload
     @Published var isPDFPage: Bool = false
 
-    // MARK: - Estado de credenciais
     @Published var showSavePasswordPrompt: Bool = false
     @Published var showSettingsSheet: Bool = false
     @Published var hasCredentials: Bool = false
 
-    // Credenciais temporárias capturadas do formulário
     var capturedUsername: String = ""
     private(set) var capturedPassword: String = ""
 
-    // MARK: - WebView compartilhada
     let webView: WKWebView
-
     let portalURL = URL(string: "https://portalaluno.uva.br/LoginMobile")!
 
     override init() {
@@ -41,7 +37,6 @@ class WebViewModel: NSObject, ObservableObject {
         self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
 
-        // Configuração de Handlers
         let controller = webView.configuration.userContentController
         controller.add(self, name: "openSettings")
         controller.add(self, name: "credentialsCapture")
@@ -55,7 +50,6 @@ class WebViewModel: NSObject, ObservableObject {
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.delegate = self
 
-        // KVO
         webView.addObserver(self, forKeyPath: "canGoBack", options: [.new], context: nil)
         webView.addObserver(self, forKeyPath: "title", options: [.new], context: nil)
         webView.addObserver(self, forKeyPath: "URL", options: [.new], context: nil)
@@ -79,7 +73,7 @@ class WebViewModel: NSObject, ObservableObject {
     }
 
     func goBack() { webView.goBack() }
-
+    
     func reload() {
         showError = false
         isNoInternetError = false
@@ -92,7 +86,6 @@ class WebViewModel: NSObject, ObservableObject {
     }
 
     // MARK: - Biometria / Autofill
-
     func autofillWithBiometrics() {
         Task {
             do {
@@ -109,30 +102,16 @@ class WebViewModel: NSObject, ObservableObject {
     private func fillLoginForm(username: String, password: String) {
         let js = """
         (function() {
-            function triggerEvents(el) {
-                el.dispatchEvent(new Event('focus', { bubbles: true }));
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-                el.dispatchEvent(new Event('blur', { bubbles: true }));
-            }
-            
             var userField = document.getElementById('LoginEntrada_login');
             var passField = document.getElementById('LoginEntrada_senha');
-            
             if (userField && passField) {
-                userField.value = '';
-                passField.value = '';
-                
                 userField.value = \(jsString(username));
-                triggerEvents(userField);
-                
                 passField.value = \(jsString(password));
-                triggerEvents(passField);
-                
-                setTimeout(function() {
-                    var btn = document.getElementById('btn_logar');
-                    if (btn) { btn.click(); }
-                }, 100);
+                [userField, passField].forEach(el => {
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                    el.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+                setTimeout(() => { document.getElementById('btn_logar')?.click(); }, 150);
             }
         })();
         """
@@ -141,191 +120,115 @@ class WebViewModel: NSObject, ObservableObject {
 
     func savePassword() {
         guard !capturedUsername.isEmpty, !capturedPassword.isEmpty else { return }
-        do {
-            try KeychainManager.shared.saveCredentials(username: capturedUsername, password: capturedPassword)
-            hasCredentials = true
-            injectScript(in: self.webView)
-        } catch {
-            print("Erro ao salvar no Keychain: \(error.localizedDescription)")
-        }
-        capturedUsername = ""
-        capturedPassword = ""
-        showSavePasswordPrompt = false
-    }
-
-    func discardSavePassword() {
-        capturedUsername = ""
-        capturedPassword = ""
-        showSavePasswordPrompt = false
-    }
-
-    func deleteCredentials() {
-        KeychainManager.shared.deleteCredentials()
-        hasCredentials = false
+        try? KeychainManager.shared.saveCredentials(username: capturedUsername, password: capturedPassword)
+        hasCredentials = true
         injectScript(in: self.webView)
+        showSavePasswordPrompt = false
     }
 
-    // MARK: - KVO
-    override func observeValue(forKeyPath keyPath: String?, of object: Any?,
-                               change: [NSKeyValueChangeKey: Any]?,
-                               context: UnsafeMutableRawPointer?) {
+    // MARK: - KVO & UI Helpers
+    override func observeValue(forKeyPath keyPath: String?, of object: Any?, change: [NSKeyValueChangeKey: Any]?, context: UnsafeMutableRawPointer?) {
         guard let wv = object as? WKWebView else { return }
-        switch keyPath {
-        case "canGoBack":
-            DispatchQueue.main.async {
-                self.canGoBack = wv.canGoBack
-                self.updateBackButtonVisibility(url: wv.url)
-            }
-        case "title":
-            DispatchQueue.main.async { self.pageTitle = wv.title ?? "" }
-        case "URL":
-            DispatchQueue.main.async { self.updateBackButtonVisibility(url: wv.url) }
-        default:
-            break
+        DispatchQueue.main.async {
+            if keyPath == "canGoBack" { self.canGoBack = wv.canGoBack }
+            if keyPath == "title" { self.pageTitle = wv.title ?? "" }
+            self.updateUIStates(url: wv.url)
         }
     }
 
-    private func updateBackButtonVisibility(url: URL?) {
-        guard let urlString = url?.absoluteString else { showBackButton = false; return }
+    private func updateUIStates(url: URL?) {
+        guard let urlString = url?.absoluteString else {
+            showBackButton = false
+            showReloadButton = false
+            return
+        }
+        
         let isHiddenPage = hiddenBackURLs.contains(where: { urlString.contains($0) })
+        
+        // Botão de voltar: apenas se puder voltar e não for página "home"
         showBackButton = canGoBack && !isHiddenPage
-    }
-
-    private func availableBiometryType() -> LABiometryType {
-        let context = LAContext()
-        var error: NSError?
-        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
-            return .none
-        }
-        return context.biometryType
+        
+        // Botão de recarregar: aparece em qualquer lugar exceto talvez na tela de login pura
+        // Ou conforme sua preferência, aqui coloco para aparecer sempre que o Back aparecer
+        showReloadButton = !isHiddenPage
     }
 
     private func renderSFSymbol(named name: String, size: CGFloat, color: UIColor) -> String {
-        let config = UIImage.SymbolConfiguration(pointSize: size, weight: .thin)
-        guard let image = UIImage(systemName: name, withConfiguration: config)?
-                .withTintColor(color, renderingMode: .alwaysOriginal),
+        let config = UIImage.SymbolConfiguration(pointSize: size, weight: .medium)
+        guard let image = UIImage(systemName: name, withConfiguration: config)?.withTintColor(color, renderingMode: .alwaysOriginal),
               let pngData = image.pngData() else { return "" }
         return pngData.base64EncodedString()
     }
 
     // MARK: - JavaScript Injection
-
     private func injectScript(in webView: WKWebView) {
         guard let urlString = webView.url?.absoluteString else { return }
         if urlString.lowercased().hasSuffix(".pdf") { return }
 
-        let isLogin        = urlString.contains("LoginMobile")
-        let isEsqueciSenha = urlString.contains("EsqueciSenha")
-        let isPortalHome   = urlString.contains("Aluno/PortalAluno")
-        let isPortal       = urlString.contains("portalaluno.uva.br")
+        let isLogin = urlString.contains("LoginMobile")
+        let isPortalHome = urlString.contains("Aluno/PortalAluno")
+        let isPortal = urlString.contains("portalaluno.uva.br")
 
-        var script = """
-        (function() {
-            var meta = document.querySelector('meta[name="viewport"]') || document.createElement('meta');
-            meta.name = 'viewport';
-            meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
-            document.getElementsByTagName('head')[0].appendChild(meta);
-        """
-
+        var script = "(function() {"
+        
         if isPortal { script += "\ndocument.body.style.backgroundColor = '#004B78';" }
 
-        if isLogin || isEsqueciSenha {
-            script += """
-            var buttons = document.querySelectorAll('button.btn-style, button.button-type-mobile');
-            buttons.forEach(function(btn) {
-                btn.style.backgroundColor = '#FFD000';
-                btn.style.color = '#004B78';
-            });
-            var links = document.querySelectorAll('a, .text-white, label');
-            links.forEach(function(el) { el.style.color = 'white'; });
-            var header = document.querySelector('.header') || document.querySelector('.navbar-header');
-            if (header) {
-                header.style.background = '#004B78';
-                header.style.display = 'flex';
-                header.style.justifyContent = 'center';
-                header.style.padding = '20px 0';
-                header.innerHTML = '<img src="https://i.imgur.com/SzxKhmN.jpeg" style="max-width: 180px; height: auto;">';
-            }
-            """
-        }
-
+        // Customização da tela de Login
         if isLogin {
             script += """
-            (function() {
-                var btn = document.getElementById('btn_logar');
-                if (btn && !btn.dataset.maisUvaHooked) {
-                    btn.dataset.maisUvaHooked = 'true';
-                    btn.addEventListener('click', function() {
-                        var userField = document.getElementById('LoginEntrada_login');
-                        var passField = document.getElementById('LoginEntrada_senha');
-                        if (userField && passField && userField.value && passField.value) {
-                            window.webkit.messageHandlers.credentialsCapture.postMessage(
-                                JSON.stringify({ username: userField.value, password: passField.value })
-                            );
-                        }
-                    }, true);
-                }
-            })();
+            var buttons = document.querySelectorAll('button.btn-style, button.button-type-mobile');
+            buttons.forEach(btn => { btn.style.backgroundColor = '#FFD000'; btn.style.color = '#004B78'; });
+            document.querySelectorAll('a, .text-white, label').forEach(el => el.style.color = 'white');
+            
+            var btnLogar = document.getElementById('btn_logar');
+            if (btnLogar && !btnLogar.dataset.hooked) {
+                btnLogar.dataset.hooked = 'true';
+                btnLogar.addEventListener('click', () => {
+                    var u = document.getElementById('LoginEntrada_login')?.value;
+                    var p = document.getElementById('LoginEntrada_senha')?.value;
+                    if (u && p) window.webkit.messageHandlers.credentialsCapture.postMessage(JSON.stringify({username:u, password:p}));
+                }, true);
+            }
             """
 
             if hasCredentials {
-                let biometryType = availableBiometryType()
-                let sfSymbolName = biometryType == .faceID ? "faceid" : (biometryType == .touchID ? "touchid" : "lock.fill")
-                let buttonLabel  = biometryType == .faceID ? "Entrar com Face ID" : (biometryType == .touchID ? "Entrar com Touch ID" : "Entrar com biometria")
-                let base64Icon   = renderSFSymbol(named: sfSymbolName, size: 80, color: .white)
+                let context = LAContext()
+                var error: NSError?
+                let canBio = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+                let bioType = context.biometryType
+                
+                let sfName = bioType == .faceID ? "faceid" : (bioType == .touchID ? "touchid" : "lock.fill")
+                let label = bioType == .faceID ? "Entrar com Face ID" : "Entrar com Biometria"
+                let icon64 = renderSFSymbol(named: sfName, size: 60, color: .white)
 
                 script += """
-                (function() {
-                    if (document.getElementById('mais-uva-bio-block')) return;
-                    var forgotLink = document.querySelector('a[href*="EsqueciSenha"]');
-                    var fieldsToHide = document.querySelectorAll('.form-group, .input-group, input, #btn_logar, label[for]');
-                    fieldsToHide.forEach(function(el) { el.style.display = 'none'; });
-
+                if (!document.getElementById('mais-uva-bio-block')) {
+                    document.querySelectorAll('.form-group, .input-group, input, #btn_logar, label[for]').forEach(el => el.style.display = 'none');
                     var block = document.createElement('div');
                     block.id = 'mais-uva-bio-block';
-                    block.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:20px;padding:40px 24px;width:100%;';
-
-                    var icon = document.createElement('img');
-                    icon.src = 'data:image/png;base64,\(base64Icon)';
-                    icon.style.cssText = 'width:72px;height:72px;opacity:0.9;';
-                    block.appendChild(icon);
-
-                    var bioBtn = document.createElement('button');
-                    bioBtn.textContent = '\(buttonLabel)';
-                    bioBtn.style.cssText = 'background:#FFD000;color:#004B78;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold;width:85%;';
-                    bioBtn.addEventListener('click', function() {
-                        window.webkit.messageHandlers.openSettings.postMessage('biometry');
-                    });
-                    block.appendChild(bioBtn);
-
-                    if (forgotLink) {
-                        forgotLink.style.cssText = 'color:white;text-decoration:underline;font-size:14px;margin-top:10px;display:block;';
-                        block.appendChild(forgotLink);
-                    }
-
-                    var container = document.querySelector('.card-body') || document.querySelector('form') || document.body;
-                    container.appendChild(block);
-                })();
+                    block.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:20px;padding:40px 20px;';
+                    block.innerHTML = `
+                        <img src="data:image/png;base64,\(icon64)" style="width:64px;height:64px;">
+                        <button onclick="window.webkit.messageHandlers.openSettings.postMessage('biometry')" style="background:#FFD000;color:#004B78;border:none;border-radius:10px;padding:15px 0;font-size:16px;font-weight:bold;width:90%;">\(label)</button>
+                        <a href="#" onclick="location.reload()" style="color:white;text-size:12px;margin-top:10px;text-decoration:underline;">Usar outra conta</a>
+                    `;
+                    (document.querySelector('.card-body') || document.body).appendChild(block);
+                }
                 """
             }
         }
 
+        // Ícone de Configurações na Home (Corrigido usando SFSymbol)
         if isPortalHome {
+            let gear64 = renderSFSymbol(named: "gearshape.fill", size: 24, color: .white)
             script += """
-            var imgLogo = document.getElementById('image-logo');
-            if (imgLogo) imgLogo.src = '/image/uva/desktop/logo_footer.svg';
-
             var cardClass = document.querySelector('.card-class');
             if (cardClass && !document.getElementById('mais-uva-settings-btn')) {
-                var refLabel = document.querySelector('.card-class label');
-                var refClass = refLabel ? refLabel.className : '';
-                var gear = document.createElement('label');
+                var gear = document.createElement('div');
                 gear.id = 'mais-uva-settings-btn';
-                gear.className = refClass;
-                gear.innerHTML = '<img style="width:26px;height:26px;" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTExLjA3OCAyLjI1Yy0uOTE3IDAtMS42OTkuNjYzLTEuODUgMS41NjdMOS4wNSA0Ljg4OWMtLjAyLjEyLS4xMTUuMjYtLjI5Ny4zNDhhNy40OTMgNy40OTMgMCAwIDAtLjk4Ni41N2MtLjE2Ni4xMTUtLjMzNC4xMjYtLjQ1LjA4M0w2LjMgNS41MDhhMS44NzUgMS44NzUgMCAwIDAtMi4yODIuODE5bC0uOTIyIDEuNTk3YTEuODc1IDEuODc1IDAgMCAwIC40MzIgMi4zODVsLjg0LjY5MmMuMDk1LjA3OC4xNy4yMjkuMTU0LjQzYTcuNTk4IDcuNTk4IDAgMCAwIDAtMS4xMzljLjAxNS4yLS4wNTkuMzUyLS4xNTMuNDNsLS44NDEuNjkyYTEuODc1IDEuODc1IDAgMCAwLS40MzIgMi4zODVsLjkyMiAxLjU5N2ExLjg3NSAxLjg3NSAwIDAgMCAyLjI4Mi44MThsMS4wMTktLjM4MmMuMTE1LS4wNDMuMjgzLS4wMzEuNDUuMDgyLjMxMi4yMTQuNjQxLjQwNS45ODUuNTcuMTgyLjA4OC4yNzcuMjI4LjI5Ny4zNWwuMTc4IDEuMDcxYy4xNTEuOTA0LjkzMyAxLjU2NyAxLjg1IDEuNTY3aDEuODQ0Yy45MTYgMCAxLjY5OS0uNjYzIDEuODUtMS41NjdsLjE3OC0xLjA3MmMuMDIpLTMuMzQ5LjM0NC0uMTY1LjY3My0uMzU2Ljk4NS0uNTcuMTY3LS4xMTQuMzM1LS4xMjUuNDUtLjA4MmwxLjAyLjM4MmExLjg3NSAxLjg3NSAwIDAgMCAyLjI4LS4groupLWwuOTIzLTEuNTk3YTEuODc1IDEuODc1IDAgMCAwLS40MzItMi4zODVsLS44NC0uNjkyYy0uMDk1LS4wNzgtLjE3LS4yMjktLjE1NC0uNDNhNy42MTQgNy42MTQgMCAwIDAgMCAxLjEzOWMtLjAxNi0uMi4wNTktLjM1Mi4xNTMtLjQzbC44NC0uNjkyYy43MDgtLjU4Mi44OTEtMS41OS40MzMtMi4zODVsLS45MjItMS41OTdhMS44NzUgMS44NzUgMCAwIDAtMi4yODItLjgxOGwtMS4wMi4zODJjLS4xMTQuMDQzLS4yODIuMDMxLS40NDktLjA4M2E3LjQ5IDcuNDkgMCAwIDAtLjk4NS0uNTdjLS4xODMtLjA4Ny0uMjc3LS4yMjctLjI5Ny0uMzQ4bC0uMTc5LTEuMDcyYTEuODc1IDEuODc1IDAgMCAwLTEuODUtMS41NjdoLTEuODQzWk0xMiAxNS43NWEzLjc1IDMuNzUgMCAxIDAgMC03LjUgMy43NSAzLjc1IDAgMCAwIDAgNy41WiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PC9zdmc+">';
-                gear.addEventListener('click', function() {
-                    window.webkit.messageHandlers.openSettings.postMessage('open');
-                });
+                gear.style.cssText = 'display:inline-flex;align-items:center;justify-content:center;margin-left:12px;vertical-align:middle;cursor:pointer;padding:4px;';
+                gear.innerHTML = '<img src="data:image/png;base64,\(gear64)" style="width:24px;height:24px;">';
+                gear.onclick = () => window.webkit.messageHandlers.openSettings.postMessage('open');
                 cardClass.appendChild(gear);
             }
             """
@@ -336,100 +239,50 @@ class WebViewModel: NSObject, ObservableObject {
     }
 
     private func jsString(_ s: String) -> String {
-        let escaped = s.replacingOccurrences(of: "\\", with: "\\\\")
-                               .replacingOccurrences(of: "\"", with: "\\\"")
-                               .replacingOccurrences(of: "\n", with: "\\n")
+        let escaped = s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"").replacingOccurrences(of: "\n", with: "\\n")
         return "\"\(escaped)\""
     }
 }
 
-// MARK: - WKScriptMessageHandler
+// MARK: - Handlers & Navigation
 extension WebViewModel: WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
-        switch message.name {
-        case "openSettings":
-            DispatchQueue.main.async {
-                if message.body as? String == "biometry" {
-                    self.autofillWithBiometrics()
-                } else {
-                    self.showSettingsSheet = true
-                }
+        DispatchQueue.main.async {
+            if message.name == "openSettings" {
+                if message.body as? String == "biometry" { self.autofillWithBiometrics() }
+                else { self.showSettingsSheet = true }
+            } else if message.name == "credentialsCapture" {
+                guard let body = message.body as? String, let data = body.data(using: .utf8),
+                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: String] else { return }
+                self.capturedUsername = json["username"] ?? ""
+                self.capturedPassword = json["password"] ?? ""
             }
-        case "credentialsCapture":
-            guard let body = message.body as? String,
-                  let data = body.data(using: .utf8),
-                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
-                  let username = json["username"], !username.isEmpty,
-                  let password = json["password"], !password.isEmpty else { return }
-            DispatchQueue.main.async {
-                self.capturedUsername = username
-                self.capturedPassword = password
-            }
-        default: break
         }
     }
 }
 
-// MARK: - WKNavigationDelegate
 extension WebViewModel: WKNavigationDelegate {
-    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        DispatchQueue.main.async {
-            self.isLoading = true
-            self.showError = false
-            self.isNoInternetError = false // Limpa o estado de erro ao começar nova carga
-        }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation n: WKNavigation!) {
+        DispatchQueue.main.async { self.isLoading = true; self.showError = false; self.isNoInternetError = false }
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    func webView(_ webView: WKWebView, didFinish n: WKNavigation!) {
         DispatchQueue.main.async {
             self.isLoading = false
-            self.canGoBack = webView.canGoBack
-            self.pageTitle = webView.title ?? ""
-            self.updateBackButtonVisibility(url: webView.url)
-            
-            let isPDF = webView.url?.absoluteString.lowercased().hasSuffix(".pdf") ?? false
-            self.isPDFPage = isPDF
-            webView.scrollView.minimumZoomScale = isPDF ? 0.5 : 1.0
-            webView.scrollView.maximumZoomScale = isPDF ? 5.0 : 1.0
-
-            guard let urlString = webView.url?.absoluteString else { return }
-
-            if urlString.contains("Aluno/PortalAluno"), !self.capturedUsername.isEmpty, !KeychainManager.shared.hasCredentials() {
+            self.updateUIStates(url: webView.url)
+            if webView.url?.absoluteString.contains("Aluno/PortalAluno") == true, !self.capturedUsername.isEmpty, !KeychainManager.shared.hasCredentials() {
                 self.showSavePasswordPrompt = true
             }
         }
         injectScript(in: webView)
     }
 
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        let nsError = error as NSError
-        
-        // CORREÇÃO DO BUG: Ignora o erro -999 (operação cancelada)
-        // Isso acontece quando o WebView cancela uma carga para iniciar um redirecionamento
-        if nsError.code == NSURLErrorCancelled {
-            return
-        }
-
-        DispatchQueue.main.async {
-            self.isLoading = false
-            self.isNoInternetError = true
-            self.showError = true
-        }
-    }
-    
-    // Opcional: Adicionar tratamento de falha na navegação principal também
-    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        let nsError = error as NSError
-        if nsError.code == NSURLErrorCancelled { return }
-        
-        DispatchQueue.main.async {
-            self.isLoading = false
-            self.showError = true
-        }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation n: WKNavigation!, withError e: Error) {
+        if (e as NSError).code == NSURLErrorCancelled { return }
+        DispatchQueue.main.async { self.isLoading = false; self.isNoInternetError = true; self.showError = true }
     }
 }
 
-// MARK: - WKUIDelegate e UIScrollViewDelegate
 extension WebViewModel: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
@@ -439,8 +292,7 @@ extension WebViewModel: WKUIDelegate {
 
 extension WebViewModel: UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
-        return isPDFPage ? scrollView.subviews.first : nil
+        let isPDF = webView.url?.absoluteString.lowercased().hasSuffix(".pdf") ?? false
+        return isPDF ? scrollView.subviews.first : nil
     }
 }
-
-// Removi o WeakMessageHandler duplicado pois você já implementa o WKScriptMessageHandler na WebViewModel principal.
