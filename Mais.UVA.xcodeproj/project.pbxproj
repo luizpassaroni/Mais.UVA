@@ -6,10 +6,6 @@
 	objectVersion = 77;
 	objects = {
 
-/* Begin PBXBuildFile section */
-		CB2224422F4B6CB800C5DC21 /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = CB2224412F4B6CB800C5DC21 /* SwiftASN1 */; };
-/* End PBXBuildFile section */
-
 /* Begin PBXFileReference section */
 		CBFE612A2F4379D800B1600E /* UVA+.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UVA+.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		CBFE61542F46A7FE00B1600E /* UVA+.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "UVA+.entitlements"; sourceTree = "<group>"; };
@@ -28,7 +24,6 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				CB2224422F4B6CB800C5DC21 /* SwiftASN1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -72,7 +67,6 @@
 			);
 			name = "UVA+";
 			packageProductDependencies = (
-				CB2224412F4B6CB800C5DC21 /* SwiftASN1 */,
 			);
 			productName = Mais.UVA;
 			productReference = CBFE612A2F4379D800B1600E /* UVA+.app */;
@@ -106,7 +100,6 @@
 			mainGroup = CBFE61212F4379D800B1600E;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				CB2224402F4B6CB800C5DC21 /* XCRemoteSwiftPackageReference "swift-asn1" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CBFE612B2F4379D800B1600E /* Products */;
@@ -362,25 +355,6 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
-
-/* Begin XCRemoteSwiftPackageReference section */
-		CB2224402F4B6CB800C5DC21 /* XCRemoteSwiftPackageReference "swift-asn1" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/apple/swift-asn1.git";
-			requirement = {
-				kind = upToNextMajorVersion;
-				minimumVersion = 1.5.1;
-			};
-		};
-/* End XCRemoteSwiftPackageReference section */
-
-/* Begin XCSwiftPackageProductDependency section */
-		CB2224412F4B6CB800C5DC21 /* SwiftASN1 */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = CB2224402F4B6CB800C5DC21 /* XCRemoteSwiftPackageReference "swift-asn1" */;
-			productName = SwiftASN1;
-		};
-/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CBFE61222F4379D800B1600E /* Project object */;
 }

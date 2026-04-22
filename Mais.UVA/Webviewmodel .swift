@@ -1,6 +1,8 @@
 import SwiftUI
 import WebKit
 import Combine
+import LocalAuthentication
+import UIKit
 
 // URLs onde o botão de voltar NÃO deve aparecer
 private let hiddenBackURLs: [String] = [
@@ -36,18 +38,11 @@ class WebViewModel: NSObject, ObservableObject {
         let config = WKWebViewConfiguration()
         config.preferences.javaScriptCanOpenWindowsAutomatically = true
 
-        // Placeholder handlers para evitar crash no init
-        let contentController = config.userContentController
-        contentController.add(WeakMessageHandler(), name: "openSettings")
-        contentController.add(WeakMessageHandler(), name: "credentialsCapture")
-
         self.webView = WKWebView(frame: .zero, configuration: config)
         super.init()
 
-        // Substitui pelos handlers reais agora que self existe
+        // Configuração de Handlers
         let controller = webView.configuration.userContentController
-        controller.removeScriptMessageHandler(forName: "openSettings")
-        controller.removeScriptMessageHandler(forName: "credentialsCapture")
         controller.add(self, name: "openSettings")
         controller.add(self, name: "credentialsCapture")
 
@@ -60,6 +55,7 @@ class WebViewModel: NSObject, ObservableObject {
         webView.scrollView.isScrollEnabled = true
         webView.scrollView.delegate = self
 
+        // KVO
         webView.addObserver(self, forKeyPath: "canGoBack", options: [.new], context: nil)
         webView.addObserver(self, forKeyPath: "title", options: [.new], context: nil)
         webView.addObserver(self, forKeyPath: "URL", options: [.new], context: nil)
@@ -86,8 +82,8 @@ class WebViewModel: NSObject, ObservableObject {
 
     func reload() {
         showError = false
+        isNoInternetError = false
         isLoading = true
-        // Se a webView não tem URL válida (falhou antes de carregar), vai pro portal
         if webView.url == nil || webView.url?.absoluteString == "about:blank" {
             loadPortal()
         } else {
@@ -105,7 +101,7 @@ class WebViewModel: NSObject, ObservableObject {
                     self.fillLoginForm(username: credentials.username, password: credentials.password)
                 }
             } catch {
-                print("Biometria cancelada ou falhou: \(error.localizedDescription)")
+                print("Biometria falhou: \(error.localizedDescription)")
             }
         }
     }
@@ -113,21 +109,31 @@ class WebViewModel: NSObject, ObservableObject {
     private func fillLoginForm(username: String, password: String) {
         let js = """
         (function() {
+            function triggerEvents(el) {
+                el.dispatchEvent(new Event('focus', { bubbles: true }));
+                el.dispatchEvent(new Event('input', { bubbles: true }));
+                el.dispatchEvent(new Event('change', { bubbles: true }));
+                el.dispatchEvent(new Event('blur', { bubbles: true }));
+            }
+            
             var userField = document.getElementById('LoginEntrada_login');
             var passField = document.getElementById('LoginEntrada_senha');
-            if (userField) {
+            
+            if (userField && passField) {
+                userField.value = '';
+                passField.value = '';
+                
                 userField.value = \(jsString(username));
-                userField.dispatchEvent(new Event('input', { bubbles: true }));
-                userField.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-            if (passField) {
+                triggerEvents(userField);
+                
                 passField.value = \(jsString(password));
-                passField.dispatchEvent(new Event('input', { bubbles: true }));
-                passField.dispatchEvent(new Event('change', { bubbles: true }));
+                triggerEvents(passField);
+                
+                setTimeout(function() {
+                    var btn = document.getElementById('btn_logar');
+                    if (btn) { btn.click(); }
+                }, 100);
             }
-            // Clica automaticamente no botão Entrar após preencher
-            var btn = document.getElementById('btn_logar');
-            if (btn) { btn.click(); }
         })();
         """
         webView.evaluateJavaScript(js, completionHandler: nil)
@@ -185,16 +191,33 @@ class WebViewModel: NSObject, ObservableObject {
         showBackButton = canGoBack && !isHiddenPage
     }
 
-    // MARK: - JavaScript
+    private func availableBiometryType() -> LABiometryType {
+        let context = LAContext()
+        var error: NSError?
+        guard context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) else {
+            return .none
+        }
+        return context.biometryType
+    }
+
+    private func renderSFSymbol(named name: String, size: CGFloat, color: UIColor) -> String {
+        let config = UIImage.SymbolConfiguration(pointSize: size, weight: .thin)
+        guard let image = UIImage(systemName: name, withConfiguration: config)?
+                .withTintColor(color, renderingMode: .alwaysOriginal),
+              let pngData = image.pngData() else { return "" }
+        return pngData.base64EncodedString()
+    }
+
+    // MARK: - JavaScript Injection
 
     private func injectScript(in webView: WKWebView) {
         guard let urlString = webView.url?.absoluteString else { return }
-        // Não injeta nada em PDFs — deixa o zoom livre
         if urlString.lowercased().hasSuffix(".pdf") { return }
-        let isLogin = urlString.contains("LoginMobile")
+
+        let isLogin        = urlString.contains("LoginMobile")
         let isEsqueciSenha = urlString.contains("EsqueciSenha")
-        let isPortalHome = urlString.contains("Aluno/PortalAluno")
-        let isPortal = urlString.contains("portalaluno.uva.br")
+        let isPortalHome   = urlString.contains("Aluno/PortalAluno")
+        let isPortal       = urlString.contains("portalaluno.uva.br")
 
         var script = """
         (function() {
@@ -215,20 +238,18 @@ class WebViewModel: NSObject, ObservableObject {
             });
             var links = document.querySelectorAll('a, .text-white, label');
             links.forEach(function(el) { el.style.color = 'white'; });
-            var header = document.querySelector('.header') || document.querySelector('.logo') || document.querySelector('.navbar-header');
+            var header = document.querySelector('.header') || document.querySelector('.navbar-header');
             if (header) {
                 header.style.background = '#004B78';
                 header.style.display = 'flex';
                 header.style.justifyContent = 'center';
-                header.style.alignItems = 'center';
                 header.style.padding = '20px 0';
-                header.innerHTML = '<img src="https://i.imgur.com/SzxKhmN.jpeg" style="max-width: 180px; height: auto; display: block; margin: 0 auto;">';
+                header.innerHTML = '<img src="https://i.imgur.com/SzxKhmN.jpeg" style="max-width: 180px; height: auto;">';
             }
             """
         }
 
         if isLogin {
-            // Captura credenciais no clique do botão Entrar (btn_logar é type="button", não submit)
             script += """
             (function() {
                 var btn = document.getElementById('btn_logar');
@@ -246,6 +267,47 @@ class WebViewModel: NSObject, ObservableObject {
                 }
             })();
             """
+
+            if hasCredentials {
+                let biometryType = availableBiometryType()
+                let sfSymbolName = biometryType == .faceID ? "faceid" : (biometryType == .touchID ? "touchid" : "lock.fill")
+                let buttonLabel  = biometryType == .faceID ? "Entrar com Face ID" : (biometryType == .touchID ? "Entrar com Touch ID" : "Entrar com biometria")
+                let base64Icon   = renderSFSymbol(named: sfSymbolName, size: 80, color: .white)
+
+                script += """
+                (function() {
+                    if (document.getElementById('mais-uva-bio-block')) return;
+                    var forgotLink = document.querySelector('a[href*="EsqueciSenha"]');
+                    var fieldsToHide = document.querySelectorAll('.form-group, .input-group, input, #btn_logar, label[for]');
+                    fieldsToHide.forEach(function(el) { el.style.display = 'none'; });
+
+                    var block = document.createElement('div');
+                    block.id = 'mais-uva-bio-block';
+                    block.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:20px;padding:40px 24px;width:100%;';
+
+                    var icon = document.createElement('img');
+                    icon.src = 'data:image/png;base64,\(base64Icon)';
+                    icon.style.cssText = 'width:72px;height:72px;opacity:0.9;';
+                    block.appendChild(icon);
+
+                    var bioBtn = document.createElement('button');
+                    bioBtn.textContent = '\(buttonLabel)';
+                    bioBtn.style.cssText = 'background:#FFD000;color:#004B78;border:none;border-radius:10px;padding:14px 0;font-size:16px;font-weight:bold;width:85%;';
+                    bioBtn.addEventListener('click', function() {
+                        window.webkit.messageHandlers.openSettings.postMessage('biometry');
+                    });
+                    block.appendChild(bioBtn);
+
+                    if (forgotLink) {
+                        forgotLink.style.cssText = 'color:white;text-decoration:underline;font-size:14px;margin-top:10px;display:block;';
+                        block.appendChild(forgotLink);
+                    }
+
+                    var container = document.querySelector('.card-body') || document.querySelector('form') || document.body;
+                    container.appendChild(block);
+                })();
+                """
+            }
         }
 
         if isPortalHome {
@@ -255,19 +317,17 @@ class WebViewModel: NSObject, ObservableObject {
 
             var cardClass = document.querySelector('.card-class');
             if (cardClass && !document.getElementById('mais-uva-settings-btn')) {
-                    var refLabel = document.querySelector('.card-class label');
-                    var refClass = refLabel ? refLabel.className : '';
-
-                    var gear = document.createElement('label');
-                    gear.id = 'mais-uva-settings-btn';
-                    gear.setAttribute('data-header-option', '');
-                    gear.className = refClass;
-                    gear.innerHTML = '<img style="width:26px;height:26px;" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTExLjA3OCAyLjI1Yy0uOTE3IDAtMS42OTkuNjYzLTEuODUgMS41NjdMOS4wNSA0Ljg4OWMtLjAyLjEyLS4xMTUuMjYtLjI5Ny4zNDhhNy40OTMgNy40OTMgMCAwIDAtLjk4Ni41N2MtLjE2Ni4xMTUtLjMzNC4xMjYtLjQ1LjA4M0w2LjMgNS41MDhhMS44NzUgMS44NzUgMCAwIDAtMi4yODIuODE5bC0uOTIyIDEuNTk3YTEuODc1IDEuODc1IDAgMCAwIC40MzIgMi4zODVsLjg0LjY5MmMuMDk1LjA3OC4xNy4yMjkuMTU0LjQzYTcuNTk4IDcuNTk4IDAgMCAwIDAgMS4xMzljLjAxNS4yLS4wNTkuMzUyLS4xNTMuNDNsLS44NDEuNjkyYTEuODc1IDEuODc1IDAgMCAwLS40MzIgMi4zODVsLjkyMiAxLjU5N2ExLjg3NSAxLjg3NSAwIDAgMCAyLjI4Mi44MThsMS4wMTktLjM4MmMuMTE1LS4wNDMuMjgzLS4wMzEuNDUuMDgyLjMxMi4yMTQuNjQxLjQwNS45ODUuNTcuMTgyLjA4OC4yNzcuMjI4LjI5Ny4zNWwuMTc4IDEuMDcxYy4xNTEuOTA0LjkzMyAxLjU2NyAxLjg1IDEuNTY3aDEuODQ0Yy45MTYgMCAxLjY5OS0uNjYzIDEuODUtMS41NjdsLjE3OC0xLjA3MmMuMDItLjEyLjExNC0uMjYuMjk3LS4zNDkuMzQ0LS4xNjUuNjczLS4zNTYuOTg1LS41Ny4xNjctLjExNC4zMzUtLjEyNS40NS0uMDgybDEuMDIuMzgyYTEuODc1IDEuODc1IDAgMCAwIDIuMjgtLjgxOWwuOTIzLTEuNTk3YTEuODc1IDEuODc1IDAgMCAwLS40MzItMi4zODVsLS44NC0uNjkyYy0uMDk1LS4wNzgtLjE3LS4yMjktLjE1NC0uNDNhNy42MTQgNy42MTQgMCAwIDAgMC0xLjEzOWMtLjAxNi0uMi4wNTktLjM1Mi4xNTMtLjQzbC44NC0uNjkyYy43MDgtLjU4Mi44OTEtMS41OS40MzMtMi4zODVsLS45MjItMS41OTdhMS44NzUgMS44NzUgMCAwIDAtMi4yODItLjgxOGwtMS4wMi4zODJjLS4xMTQuMDQzLS4yODIuMDMxLS40NDktLjA4M2E3LjQ5IDcuNDkgMCAwIDAtLjk4NS0uNTdjLS4xODMtLjA4Ny0uMjc3LS4yMjctLjI5Ny0uMzQ4bC0uMTc5LTEuMDcyYTEuODc1IDEuODc1IDAgMCAwLTEuODUtMS41NjdoLTEuODQzWk0xMiAxNS43NWEzLjc1IDMuNzUgMCAxIDAgMC03LjUgMy43NSAzLjc1IDAgMCAwIDAgNy41WiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PC9zdmc+">';
-                    gear.addEventListener('click', function() {
-                        window.webkit.messageHandlers.openSettings.postMessage('open');
-                    });
-                    cardClass.appendChild(gear);
-                }
+                var refLabel = document.querySelector('.card-class label');
+                var refClass = refLabel ? refLabel.className : '';
+                var gear = document.createElement('label');
+                gear.id = 'mais-uva-settings-btn';
+                gear.className = refClass;
+                gear.innerHTML = '<img style="width:26px;height:26px;" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTExLjA3OCAyLjI1Yy0uOTE3IDAtMS42OTkuNjYzLTEuODUgMS41NjdMOS4wNSA0Ljg4OWMtLjAyLjEyLS4xMTUuMjYtLjI5Ny4zNDhhNy40OTMgNy40OTMgMCAwIDAtLjk4Ni41N2MtLjE2Ni4xMTUtLjMzNC4xMjYtLjQ1LjA4M0w2LjMgNS41MDhhMS44NzUgMS44NzUgMCAwIDAtMi4yODIuODE5bC0uOTIyIDEuNTk3YTEuODc1IDEuODc1IDAgMCAwIC40MzIgMi4zODVsLjg0LjY5MmMuMDk1LjA3OC4xNy4yMjkuMTU0LjQzYTcuNTk4IDcuNTk4IDAgMCAwIDAtMS4xMzljLjAxNS4yLS4wNTkuMzUyLS4xNTMuNDNsLS44NDEuNjkyYTEuODc1IDEuODc1IDAgMCAwLS40MzIgMi4zODVsLjkyMiAxLjU5N2ExLjg3NSAxLjg3NSAwIDAgMCAyLjI4Mi44MThsMS4wMTktLjM4MmMuMTE1LS4wNDMuMjgzLS4wMzEuNDUuMDgyLjMxMi4yMTQuNjQxLjQwNS45ODUuNTcuMTgyLjA4OC4yNzcuMjI4LjI5Ny4zNWwuMTc4IDEuMDcxYy4xNTEuOTA0LjkzMyAxLjU2NyAxLjg1IDEuNTY3aDEuODQ0Yy45MTYgMCAxLjY5OS0uNjYzIDEuODUtMS41NjdsLjE3OC0xLjA3MmMuMDIpLTMuMzQ5LjM0NC0uMTY1LjY3My0uMzU2Ljk4NS0uNTcuMTY3LS4xMTQuMzM1LS4xMjUuNDUtLjA4MmwxLjAyLjM4MmExLjg3NSAxLjg3NSAwIDAgMCAyLjI4LS4groupLWwuOTIzLTEuNTk3YTEuODc1IDEuODc1IDAgMCAwLS40MzItMi4zODVsLS44NC0uNjkyYy0uMDk1LS4wNzgtLjE3LS4yMjktLjE1NC0uNDNhNy42MTQgNy42MTQgMCAwIDAgMCAxLjEzOWMtLjAxNi0uMi4wNTktLjM1Mi4xNTMtLjQzbC44NC0uNjkyYy43MDgtLjU4Mi44OTEtMS41OS40MzMtMi4zODVsLS45MjItMS41OTdhMS44NzUgMS44NzUgMCAwIDAtMi4yODItLjgxOGwtMS4wMi4zODJjLS4xMTQuMDQzLS4yODIuMDMxLS40NDktLjA4M2E3LjQ5IDcuNDkgMCAwIDAtLjk4NS0uNTdjLS4xODMtLjA4Ny0uMjc3LS4yMjctLjI5Ny0uMzQ4bC0uMTc5LTEuMDcyYTEuODc1IDEuODc1IDAgMCAwLTEuODUtMS41NjdoLTEuODQzWk0xMiAxNS43NWEzLjc1IDMuNzUgMCAxIDAgMC03LjUgMy43NSAzLjc1IDAgMCAwIDAgNy41WiIgY2xpcC1ydWxlPSJldmVub2RkIi8+PC9zdmc+">';
+                gear.addEventListener('click', function() {
+                    window.webkit.messageHandlers.openSettings.postMessage('open');
+                });
+                cardClass.appendChild(gear);
+            }
             """
         }
 
@@ -276,62 +336,47 @@ class WebViewModel: NSObject, ObservableObject {
     }
 
     private func jsString(_ s: String) -> String {
-        let escaped = s
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-            .replacingOccurrences(of: "\n", with: "\\n")
+        let escaped = s.replacingOccurrences(of: "\\", with: "\\\\")
+                               .replacingOccurrences(of: "\"", with: "\\\"")
+                               .replacingOccurrences(of: "\n", with: "\\n")
         return "\"\(escaped)\""
     }
 }
 
 // MARK: - WKScriptMessageHandler
-
 extension WebViewModel: WKScriptMessageHandler {
-    func userContentController(_ userContentController: WKUserContentController,
-                                didReceive message: WKScriptMessage) {
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         switch message.name {
         case "openSettings":
-            DispatchQueue.main.async { self.showSettingsSheet = true }
-
+            DispatchQueue.main.async {
+                if message.body as? String == "biometry" {
+                    self.autofillWithBiometrics()
+                } else {
+                    self.showSettingsSheet = true
+                }
+            }
         case "credentialsCapture":
             guard let body = message.body as? String,
                   let data = body.data(using: .utf8),
                   let json = try? JSONSerialization.jsonObject(with: data) as? [String: String],
                   let username = json["username"], !username.isEmpty,
-                  let password = json["password"], !password.isEmpty
-            else { return }
+                  let password = json["password"], !password.isEmpty else { return }
             DispatchQueue.main.async {
                 self.capturedUsername = username
                 self.capturedPassword = password
             }
-
-        default:
-            break
+        default: break
         }
     }
 }
 
 // MARK: - WKNavigationDelegate
-
 extension WebViewModel: WKNavigationDelegate {
-    func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
-                 decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        decisionHandler(.allow)
-    }
-
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         DispatchQueue.main.async {
             self.isLoading = true
             self.showError = false
-        }
-    }
-
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!,
-                 withError error: Error) {
-        DispatchQueue.main.async {
-            self.isLoading = false
-            self.isNoInternetError = true
-            self.showError = true
+            self.isNoInternetError = false // Limpa o estado de erro ao começar nova carga
         }
     }
 
@@ -341,6 +386,7 @@ extension WebViewModel: WKNavigationDelegate {
             self.canGoBack = webView.canGoBack
             self.pageTitle = webView.title ?? ""
             self.updateBackButtonVisibility(url: webView.url)
+            
             let isPDF = webView.url?.absoluteString.lowercased().hasSuffix(".pdf") ?? false
             self.isPDFPage = isPDF
             webView.scrollView.minimumZoomScale = isPDF ? 0.5 : 1.0
@@ -348,37 +394,48 @@ extension WebViewModel: WKNavigationDelegate {
 
             guard let urlString = webView.url?.absoluteString else { return }
 
-            // Chegou ao portal home com credenciais pendentes de salvar
-            if urlString.contains("Aluno/PortalAluno"),
-               !self.capturedUsername.isEmpty,
-               !KeychainManager.shared.hasCredentials() {
+            if urlString.contains("Aluno/PortalAluno"), !self.capturedUsername.isEmpty, !KeychainManager.shared.hasCredentials() {
                 self.showSavePasswordPrompt = true
-            }
-
-            // Chegou ao login com credenciais salvas → Face ID
-            if urlString.contains("LoginMobile"),
-               KeychainManager.shared.hasCredentials() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    self.autofillWithBiometrics()
-                }
             }
         }
         injectScript(in: webView)
     }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        
+        // CORREÇÃO DO BUG: Ignora o erro -999 (operação cancelada)
+        // Isso acontece quando o WebView cancela uma carga para iniciar um redirecionamento
+        if nsError.code == NSURLErrorCancelled {
+            return
+        }
+
+        DispatchQueue.main.async {
+            self.isLoading = false
+            self.isNoInternetError = true
+            self.showError = true
+        }
+    }
+    
+    // Opcional: Adicionar tratamento de falha na navegação principal também
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        let nsError = error as NSError
+        if nsError.code == NSURLErrorCancelled { return }
+        
+        DispatchQueue.main.async {
+            self.isLoading = false
+            self.showError = true
+        }
+    }
 }
 
-// MARK: - WKUIDelegate
-
+// MARK: - WKUIDelegate e UIScrollViewDelegate
 extension WebViewModel: WKUIDelegate {
-    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
-                 for navigationAction: WKNavigationAction,
-                 windowFeatures: WKWindowFeatures) -> WKWebView? {
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if navigationAction.targetFrame == nil { webView.load(navigationAction.request) }
         return nil
     }
 }
-
-// MARK: - UIScrollViewDelegate
 
 extension WebViewModel: UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? {
@@ -386,9 +443,4 @@ extension WebViewModel: UIScrollViewDelegate {
     }
 }
 
-// MARK: - Placeholder handler para o init
-
-private class WeakMessageHandler: NSObject, WKScriptMessageHandler {
-    func userContentController(_ userContentController: WKUserContentController,
-                                didReceive message: WKScriptMessage) {}
-}
+// Removi o WeakMessageHandler duplicado pois você já implementa o WKScriptMessageHandler na WebViewModel principal.
