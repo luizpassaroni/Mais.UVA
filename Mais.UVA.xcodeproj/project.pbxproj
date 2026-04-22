@@ -6,8 +6,13 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		CB2224422F4B6CB800C5DC21 /* SwiftASN1 in Frameworks */ = {isa = PBXBuildFile; productRef = CB2224412F4B6CB800C5DC21 /* SwiftASN1 */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
-		CBFE612A2F4379D800B1600E /* Mais.UVA.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Mais.UVA.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CBFE612A2F4379D800B1600E /* UVA+.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "UVA+.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		CBFE61542F46A7FE00B1600E /* UVA+.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "UVA+.entitlements"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -23,6 +28,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CB2224422F4B6CB800C5DC21 /* SwiftASN1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -32,6 +38,7 @@
 		CBFE61212F4379D800B1600E = {
 			isa = PBXGroup;
 			children = (
+				CBFE61542F46A7FE00B1600E /* UVA+.entitlements */,
 				CBFE612C2F4379D800B1600E /* Mais.UVA */,
 				CBFE612B2F4379D800B1600E /* Products */,
 			);
@@ -40,7 +47,7 @@
 		CBFE612B2F4379D800B1600E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				CBFE612A2F4379D800B1600E /* Mais.UVA.app */,
+				CBFE612A2F4379D800B1600E /* UVA+.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +55,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		CBFE61292F4379D800B1600E /* Mais.UVA */ = {
+		CBFE61292F4379D800B1600E /* UVA+ */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = CBFE61352F4379D900B1600E /* Build configuration list for PBXNativeTarget "Mais.UVA" */;
+			buildConfigurationList = CBFE61352F4379D900B1600E /* Build configuration list for PBXNativeTarget "UVA+" */;
 			buildPhases = (
 				CBFE61262F4379D800B1600E /* Sources */,
 				CBFE61272F4379D800B1600E /* Frameworks */,
@@ -63,11 +70,12 @@
 			fileSystemSynchronizedGroups = (
 				CBFE612C2F4379D800B1600E /* Mais.UVA */,
 			);
-			name = Mais.UVA;
+			name = "UVA+";
 			packageProductDependencies = (
+				CB2224412F4B6CB800C5DC21 /* SwiftASN1 */,
 			);
 			productName = Mais.UVA;
-			productReference = CBFE612A2F4379D800B1600E /* Mais.UVA.app */;
+			productReference = CBFE612A2F4379D800B1600E /* UVA+.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -77,6 +85,9 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
+				KnownAssetTags = (
+					New,
+				);
 				LastSwiftUpdateCheck = 2600;
 				LastUpgradeCheck = 2600;
 				TargetAttributes = {
@@ -86,20 +97,23 @@
 				};
 			};
 			buildConfigurationList = CBFE61252F4379D800B1600E /* Build configuration list for PBXProject "Mais.UVA" */;
-			developmentRegion = en;
+			developmentRegion = "pt-BR";
 			hasScannedForEncodings = 0;
 			knownRegions = (
-				en,
 				Base,
+				"pt-BR",
 			);
 			mainGroup = CBFE61212F4379D800B1600E;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				CB2224402F4B6CB800C5DC21 /* XCRemoteSwiftPackageReference "swift-asn1" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = CBFE612B2F4379D800B1600E /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				CBFE61292F4379D800B1600E /* Mais.UVA */,
+				CBFE61292F4379D800B1600E /* UVA+ */,
 			);
 		};
 /* End PBXProject section */
@@ -251,16 +265,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = "UVA+.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4249C2D869;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_FILE = "Mais-UVA-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "UVA+";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usado para entrar automaticamente no Portal UVA";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -269,6 +288,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "luiz.Mais-UVA";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -283,16 +305,21 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = YES;
+				CODE_SIGN_ENTITLEMENTS = "UVA+.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4249C2D869;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_FILE = "Mais-UVA-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = "UVA+";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.education";
+				INFOPLIST_KEY_NSFaceIDUsageDescription = "Usado para entrar automaticamente no Portal UVA";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.6;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -301,6 +328,9 @@
 				PRODUCT_BUNDLE_IDENTIFIER = "luiz.Mais-UVA";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = YES;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -322,7 +352,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		CBFE61352F4379D900B1600E /* Build configuration list for PBXNativeTarget "Mais.UVA" */ = {
+		CBFE61352F4379D900B1600E /* Build configuration list for PBXNativeTarget "UVA+" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				CBFE61362F4379D900B1600E /* Debug */,
@@ -332,6 +362,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		CB2224402F4B6CB800C5DC21 /* XCRemoteSwiftPackageReference "swift-asn1" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-asn1.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.5.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		CB2224412F4B6CB800C5DC21 /* SwiftASN1 */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = CB2224402F4B6CB800C5DC21 /* XCRemoteSwiftPackageReference "swift-asn1" */;
+			productName = SwiftASN1;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = CBFE61222F4379D800B1600E /* Project object */;
 }
