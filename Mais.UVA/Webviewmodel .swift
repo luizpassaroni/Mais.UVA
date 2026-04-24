@@ -193,6 +193,8 @@ class WebViewModel: NSObject, ObservableObject {
     // MARK: - JavaScript Injection
     private func injectScript(in webView: WKWebView) {
         guard let urlString = webView.url?.absoluteString else { return }
+        
+        // Se for PDF, aborta o script para não injetar bloqueios e permitir o zoom natural do iOS
         if urlString.lowercased().hasSuffix(".pdf") { return }
 
         let isLogin        = urlString.contains("LoginMobile")
@@ -201,6 +203,17 @@ class WebViewModel: NSObject, ObservableObject {
         let isPortal       = urlString.contains("portalaluno.uva.br")
 
         var script = "(function() {"
+        
+        // Bloqueia o zoom adicionando ou alterando a tag viewport nas páginas HTML
+        script += """
+        var meta = document.querySelector('meta[name="viewport"]');
+        if (!meta) {
+            meta = document.createElement('meta');
+            meta.name = 'viewport';
+            document.head.appendChild(meta);
+        }
+        meta.content = 'width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no';
+        """
         
         if isPortal { script += "\ndocument.body.style.backgroundColor = '#004B78';" }
 
@@ -269,7 +282,6 @@ class WebViewModel: NSObject, ObservableObject {
         }
 
         if isPortalHome {
-            // STRING BASE64 CORRIGIDA ABAIXO
             let gearBase64 = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0id2hpdGUiPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgZD0iTTExLjA3OCAyLjI1Yy0uOTE3IDAtMS42OTkuNjYzLTEuODUgMS41NjdMOS4wNSA0Ljg4OWMtLjAyLjEyLS4xMTUuMjYtLjI5Ny4zNDhhNy40OTMgNy40OTMgMCAwIDAtLjk4Ni41N2MtLjE2Ni4xMTUtLjMzNC4xMjYtLjQ1LjA4M0w2LjMgNS41MDhhMS44NzUgMS44NzUgMCAwIDAtMi4yODIuODE5bC0uOTIyIDEuNTk3YTEuODc1IDEuODc1IDAgMCAwIC40MzIgMi4zODVsLjg0LjY5MmMuMDk1LjA3OC4xNy4yMjkuMTU0LjQzYTcuNTk4IDcuNTk4IDAgMCAwIDAtMS4xMzljLjAxNS4yLS4wNTkuMzUyLS4xNTMuNDNsLS44NDEuNjkyYTEuODc1IDEuODc1IDAgMCAwLS40MzIgMi4zODVsLjkyMiAxLjU5N2ExLjg3NSAxLjg3NSAwIDAgMCAyLjI4Mi44MThsMS4wMTktLjM4MmMuMTE1LS4wNDMuMjgzLS4wMzEuNDUuMDgyLjMxMi4yMTQuNjQxLjQwNS45ODUuNTcuMTgyLjA4OC4yNzcuMjI4LjI5Ny4zNWwuMTc4IDEuMDcxYy4xNTEuOTA0LjkzMyAxLjU2NyAxLjg1IDEuNTY3aDEuODQ0Yy45MTYgMCAxLjY5OS0uNjYzIDEuODUtMS41NjdsLjE3OC0xLjA3MmMuMDItLjEyLjExNC0uMjYuMjk3LS4zNDkuMzQ0LS4xNjUuNjczLS4zNTYuOTg1LS41Ny4xNjctLjExNC4zMzUtLjEyNS40NS0uMDgybDEuMDIuMzgyYTEuODc1IDEuODc1IDAgMCAwIDIuMjgtLjgxOWwuOTIzLTEuNTk3YTEuODc1IDEuODc1IDAgMCAwLS40MzItMi4zODVsLS44NC0uNjkyYy0uMDk1LS4wNzgtLjE3LS4yMjktLjE1NC0uNDNhNy42MTQgNy42MTQgMCAwIDAgMCAxLjEzOWMtLjAxNi0uMi4wNTktLjM1Mi4xNTMtLjQzbC44NC0uNjkyYy43MDgtLjU4Mi44OTEtMS41OS40MzMtMi4zODVsLS45MjItMS41OTdhMS44NzUgMS44NzUgMCAwIDAtMi4yODIuODE4bC0xLjAyLjM4MmMtLjExNC4wNDMtLjI4Mi4wMzEtLjQ0OS0uMDgzYTcuNDkgNy40OSAwIDAgMC0uOTg1LS41N2MtLjE4My0uMDg3LS4yNzctLjIyNy0uMjk3LS4zNDhsLS4xNzktMS4wNzJhMS44NzUgMS44NzUgMCAwIDAtMS44NS0xLjU2N2gtMS44NDNaTTEyIDE1Ljc1YTMuNzUgMy43NSAwIDEgMCAwLTcuNSAzLjc1IDMuNzUgMCAwIDAgMCA3LjVaIiBjbGlwLXJ1bGU9ImV2ZW5vZGQiLz48L3N2Zz4="
 
             script += """

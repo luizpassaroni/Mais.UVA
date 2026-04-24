@@ -14,6 +14,7 @@ struct ContentView: View {
                     .animation(.spring(response: 0.35, dampingFraction: 0.7), value: viewModel.showBackButton)
             }
 
+            //
             ZStack {
                 uvaBlue.ignoresSafeArea()
 
@@ -56,7 +57,7 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Barra de navegação
+// MARK: - Barra de navegação atualizada
 
 struct NavBar: View {
     @ObservedObject var viewModel: WebViewModel
@@ -64,6 +65,7 @@ struct NavBar: View {
 
     var body: some View {
         HStack {
+            // Botão de Voltar (Esquerda)
             Button(action: { viewModel.goBack() }) {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
@@ -71,8 +73,19 @@ struct NavBar: View {
                     .frame(width: 44, height: 44)
             }
             .accessibilityLabel("Voltar")
+
             Spacer()
+
+            // Botão de Recarregar (Direita)
+            Button(action: { viewModel.reload() }) {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Recarregar página")
         }
+        .padding(.horizontal, 4)
         .frame(height: 44)
         .background(uvaBlue)
     }
